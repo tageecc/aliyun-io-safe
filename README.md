@@ -1,8 +1,29 @@
-# 阿里云服务器 I/O 防卡死脚本
+# 阿里云 ECS / 轻量服务器 SSH 卡死、I/O wait 高自救脚本
 
-这个项目提供一个面向阿里云 ECS / 轻量应用服务器的 Bash 脚本，用来缓解低基线云盘或突发型磁盘在高写入、元数据频繁更新、日志刷盘等场景下出现的 I/O 堵塞问题，减少 SSH 会话“卡住不返回”、系统响应变慢、服务被拖死的情况。
+这是一个面向阿里云 ECS / 轻量应用服务器的 Bash 脚本，用来缓解低基线云盘或突发型磁盘在高写入、元数据频繁更新、日志刷盘等场景下出现的 I/O 堵塞问题，减少 SSH 会话“卡住不返回”、系统响应变慢、`iowait` 偏高、磁盘 `%util` 打满、服务被拖慢甚至“假死”的情况。
 
 脚本名称：`io-safe-auto.sh`
+
+适合搜索这些问题时找到本项目：
+
+- 阿里云服务器 SSH 卡死
+- 阿里云轻量服务器 SSH 无响应
+- Linux `iowait` 高 / `await` 高 / 磁盘 `%util` 100%
+- `rm` 大目录后 SSH 卡住
+- `tar` 解压、日志写入、`git clone` 后服务器变慢
+- 阿里云云盘 I/O 堵塞 / Linux SSH 假死
+
+关键词：`Aliyun`、`Alibaba Cloud`、`ECS`、`SSH hangs`、`iowait`、`await`、`nr_requests`、`sysctl`、`systemd`、`udev`
+
+## 快速开始
+
+```bash
+curl -O https://raw.githubusercontent.com/tageecc/aliyun-io-safe/main/io-safe-auto.sh
+chmod +x io-safe-auto.sh
+sudo bash io-safe-auto.sh start
+```
+
+启用后建议断开并重新连接一次 SSH，让新会话继承新的 I/O 权重配置。
 
 ## 这个脚本解决什么问题
 
@@ -61,11 +82,36 @@
 
 更适合“保命型调优”，不适合把它当成性能优化万能方案。如果你的业务长期稳定打满磁盘，根本解决办法仍然是升级磁盘规格、拆分数据盘、优化写入模式或引入限流。
 
+## 常见搜索问题，对应看这里
+
+如果你正在搜下面这些问题，这个脚本基本就是为这种场景准备的：
+
+- “阿里云服务器 SSH 卡死，但机器没完全宕机”
+- “阿里云轻量服务器一跑写盘任务就无响应”
+- “Linux `iowait` 很高，`top`、`df`、`ls` 都卡”
+- “磁盘 `await` 很高，`%util` 接近 100%”
+- “删除大目录、解压文件、刷日志后 SSH 假死”
+
+它的思路不是单纯提速，而是限制 I/O 堆积，把系统从“彻底拖死”拉回到“虽然慢，但还能连上 SSH 做处理”。
+
 ## 使用方法
 
-### 1. 上传脚本
+### 1. 下载脚本
 
-把 `io-safe-auto.sh` 上传到服务器，比如：
+你可以直接在服务器下载：
+
+```bash
+curl -O https://raw.githubusercontent.com/tageecc/aliyun-io-safe/main/io-safe-auto.sh
+```
+
+也可以先克隆仓库：
+
+```bash
+git clone https://github.com/tageecc/aliyun-io-safe.git
+cd aliyun-io-safe
+```
+
+如果你习惯本地上传，也可以用：
 
 ```bash
 scp io-safe-auto.sh root@your-server:/root/
@@ -143,12 +189,3 @@ iostat -x vda 1
 - 建议先在非核心生产实例验证
 - 不同实例规格、云盘类型、内核版本，效果会有差异
 - 如果你本身已经有更细粒度的 I/O 调优策略，请先审查是否会冲突
-
-## 小改动说明
-
-当前仓库中的版本相对原始脚本补了一点可靠性处理：
-
-- `status` 会自动探测当前根盘；`stop` 在缺少状态文件时也会回退到自动探测
-- 启用时会保存原始队列深度，回滚时优先按保存值恢复
-
-这样在根盘不是默认 `vda` 的机器上，查看状态和回滚会更准确，也不容易把队列深度恢复错。
